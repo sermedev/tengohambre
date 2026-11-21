@@ -11,7 +11,7 @@ Las copias de seguridad guardan datos de la familia, así que el repositorio tie
 
 1. Entra en https://supabase.com → **Start your project** → regístrate con GitHub.
 2. **New project**: nombre `tengohambre`, región *West EU (Ireland)* o *Central EU (Frankfurt)*, plan **Free**. Guarda la contraseña de la base de datos.
-3. Cuando termine de crearse, abre **SQL Editor → New query**, pega el contenido de `supabase/migrations/0001_init.sql` y pulsa **Run**. Debe decir *Success*.
+3. Cuando termine de crearse, abre **SQL Editor → New query**, pega el contenido de `supabase/migrations/0001_init.sql` y pulsa **Run**. Debe decir *Success*. Repite con `supabase/migrations/0002_grants.sql` (y con los siguientes archivos de esa carpeta, en orden).
 4. Apunta estos datos (botón **Connect** arriba, o **Project Settings → API Keys**):
    - **Project URL**: `https://xxxx.supabase.co`
    - **Publishable key**: empieza por `sb_publishable_` (si solo ves *anon key*, vale esa).
