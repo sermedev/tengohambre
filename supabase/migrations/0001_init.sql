@@ -1,11 +1,22 @@
 -- TengoHambre · esquema inicial
+-- Se puede ejecutar varias veces sin error: solo crea lo que falte.
 -- Todo lo de la familia cuelga de un "hogar". Solo las cuentas de Google unidas a ese hogar pueden leer o escribir sus datos (RLS).
 -- Los alimentos de BEDCA NO están aquí: van como archivo estático en la app (public/data/bedca.json), así la base de datos se queda pequeña.
 
 create extension if not exists pgcrypto;
 
+-- Ping para la GitHub Action que evita que Supabase pause el proyecto por inactividad
+create or replace function public.ping()
+returns text
+language sql
+stable
+as $$
+  select 'pong'::text;
+$$;
+grant execute on function public.ping() to anon, authenticated;
+
 -- ───────── Hogar y cuentas ─────────
-create table public.households (
+create table if not exists public.households (
   id uuid primary key default gen_random_uuid(),
   name text not null default 'Mi casa',
   invite_code text not null unique default upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)),
@@ -13,14 +24,14 @@ create table public.households (
   created_at timestamptz not null default now()
 );
 
-create table public.household_users (
+create table if not exists public.household_users (
   household_id uuid not null references public.households(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   role text not null default 'miembro' check (role in ('admin', 'miembro')),
   joined_at timestamptz not null default now(),
   primary key (household_id, user_id)
 );
-create index on public.household_users (user_id);
+create index if not exists household_users_user_idx on public.household_users (user_id);
 
 -- ¿La cuenta conectada pertenece a este hogar? (security definer para no entrar en bucle con RLS)
 create or replace function public.is_household_member(hid uuid)
@@ -29,7 +40,7 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- ───────── Personas de la familia (no son cuentas: los niños no inician sesión) ─────────
-create table public.members (
+create table if not exists public.members (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   name text not null,
@@ -48,7 +59,7 @@ create table public.members (
   updated_at timestamptz not null default now()
 );
 
-create table public.weight_log (
+create table if not exists public.weight_log (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   member_id uuid not null references public.members(id) on delete cascade,
@@ -59,7 +70,7 @@ create table public.weight_log (
 );
 
 -- ───────── Alimentos propios (precocinados con datos de la etiqueta, por 100 g) ─────────
-create table public.foods (
+create table if not exists public.foods (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   name text not null,
@@ -73,7 +84,7 @@ create table public.foods (
 );
 
 -- ───────── Recetas ─────────
-create table public.recipes (
+create table if not exists public.recipes (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   name text not null,
@@ -87,7 +98,7 @@ create table public.recipes (
   updated_at timestamptz not null default now()
 );
 
-create table public.recipe_ingredients (
+create table if not exists public.recipe_ingredients (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   recipe_id uuid not null references public.recipes(id) on delete cascade,
@@ -96,10 +107,10 @@ create table public.recipe_ingredients (
   grams numeric(7,1) not null check (grams >= 0),
   position int not null default 0
 );
-create index on public.recipe_ingredients (recipe_id);
+create index if not exists recipe_ingredients_recipe_idx on public.recipe_ingredients (recipe_id);
 
 -- ───────── Almacén (inventario manual) ─────────
-create table public.pantry_items (
+create table if not exists public.pantry_items (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   name text not null,
@@ -112,7 +123,7 @@ create table public.pantry_items (
 );
 
 -- ───────── Menú ─────────
-create table public.meal_plan_items (
+create table if not exists public.meal_plan_items (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   day date not null,
@@ -125,10 +136,10 @@ create table public.meal_plan_items (
   updated_at timestamptz not null default now(),
   check (num_nonnulls(recipe_id, pantry_item_id, eat_out) = 1)
 );
-create index on public.meal_plan_items (household_id, day);
+create index if not exists meal_plan_items_day_idx on public.meal_plan_items (household_id, day);
 
 -- ───────── Compra ─────────
-create table public.shopping_items (
+create table if not exists public.shopping_items (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   name text not null,
@@ -139,7 +150,7 @@ create table public.shopping_items (
   updated_at timestamptz not null default now()
 );
 
-create table public.saved_products (                -- productos que la familia añade al catálogo
+create table if not exists public.saved_products (                -- productos que la familia añade al catálogo
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   name text not null,
@@ -155,6 +166,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['members','foods','recipes','pantry_items','meal_plan_items','shopping_items'] loop
+    execute format('drop trigger if exists %I_touch on public.%I', t, t);
     execute format('create trigger %I_touch before update on public.%I for each row execute function public.touch_updated_at()', t, t);
   end loop;
 end $$;
@@ -163,9 +175,13 @@ end $$;
 alter table public.households enable row level security;
 alter table public.household_users enable row level security;
 
+drop policy if exists "ver mi hogar" on public.households;
 create policy "ver mi hogar" on public.households for select using (public.is_household_member(id));
+drop policy if exists "renombrar mi hogar" on public.households;
 create policy "renombrar mi hogar" on public.households for update using (public.is_household_member(id));
+drop policy if exists "ver quién está en mi hogar" on public.household_users;
 create policy "ver quién está en mi hogar" on public.household_users for select using (public.is_household_member(household_id));
+drop policy if exists "salir de un hogar" on public.household_users;
 create policy "salir de un hogar" on public.household_users for delete using (user_id = auth.uid());
 
 do $$
@@ -173,6 +189,7 @@ declare t text;
 begin
   foreach t in array array['members','weight_log','foods','recipes','recipe_ingredients','pantry_items','meal_plan_items','shopping_items','saved_products'] loop
     execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "solo mi hogar" on public.%I', t);
     execute format('create policy "solo mi hogar" on public.%I for all using (public.is_household_member(household_id)) with check (public.is_household_member(household_id))', t);
   end loop;
 end $$;
@@ -204,9 +221,14 @@ revoke all on function public.join_household(text) from public, anon;
 grant execute on function public.create_household(text) to authenticated;
 grant execute on function public.join_household(text) to authenticated;
 
--- Para la GitHub Action que evita que Supabase pause el proyecto por inactividad
-create or replace function public.ping() returns text language sql stable as $$ select 'pong'::text $$;
-grant execute on function public.ping() to anon, authenticated;
-
 -- Cambios en directo entre el móvil de los dos
-alter publication supabase_realtime add table public.meal_plan_items, public.shopping_items, public.pantry_items, public.recipes, public.members;
+do $$
+declare t text;
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then return; end if;
+  foreach t in array array['meal_plan_items','shopping_items','pantry_items','recipes','members'] loop
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
