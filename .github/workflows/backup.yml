@@ -1,0 +1,33 @@
+# Copia de seguridad semanal de los datos de la familia dentro de este repositorio (que debe ser PRIVADO).
+# Guarda las 12 últimas (unos 3 meses). Además, los commits semanales evitan que GitHub desactive las tareas programadas.
+name: Copia de seguridad semanal
+on:
+  schedule:
+    - cron: '23 3 * * 1'   # lunes, ~4-5 h en España
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: backup
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Volcar la base de datos
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          mkdir -p backups
+          f="backups/$(date -u +%F).sql"
+          docker run --rm -e DB_URL postgres:17 sh -c 'pg_dump "$DB_URL" --schema=public --no-owner --no-privileges' > "$f"
+          test -s "$f"
+          gzip -9 -f "$f"
+          ls -1 backups/*.sql.gz | sort | head -n -12 | xargs -r git rm -q --ignore-unmatch
+          ls -1 backups/*.sql.gz | sort | head -n -12 | xargs -r rm -f
+      - name: Guardar en el repositorio
+        run: |
+          git config user.name "tengohambre-backup"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A backups
+          git diff --cached --quiet || git commit -m "Copia de seguridad $(date -u +%F)"
+          git push
