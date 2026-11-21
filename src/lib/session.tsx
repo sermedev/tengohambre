@@ -3,7 +3,7 @@ import { SessionCtx } from './session-context'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, supabaseMissing } from './supabase'
 import type { Household } from './types'
-import { DEMO_HOUSEHOLD, demo, seedDemo } from './db'
+import { DEMO_HOUSEHOLD, demo, seedDemo, setHouseholdId } from './db'
 
 export type Ctx = {
   loading: boolean
@@ -21,6 +21,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   async function loadHousehold() {
     const { data } = await supabase.from('households').select('id,name,invite_code').limit(1).maybeSingle()
+    setHouseholdId(data?.id ?? null)
     setHousehold(data ?? null)
   }
 

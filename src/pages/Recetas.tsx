@@ -272,19 +272,26 @@ function RecipeDetail({ r, onClose, onEdit }: { r: Recipe; onClose: () => void; 
 function SugeridaDetail({ s, onClose }: { s: Sugerida; onClose: () => void }) {
   const { L, reload, bedca } = useData()
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
   const n = ingredientsServing(s.ing.map(([id, , g]) => ({ food_ref: `bedca:${id}`, grams: g })), 1, L)
 
   async function add() {
     setBusy(true)
-    const [r] = await db.insert<Recipe>('recipes', [
-      { name: s.name, icon: s.icon, kind: 'receta', servings: SUG_SERVINGS, minutes: s.minutes, meals: s.meals, groups: s.groups, steps: s.steps.join('\n'), note: s.why ?? null, kid_friendly: s.kids, suggested_key: s.key },
-    ])
-    await db.insert<RecipeIngredient>(
-      'recipe_ingredients',
-      s.ing.map(([id, name, g], i) => ({ recipe_id: r.id, food_ref: `bedca:${id}`, name, grams: g * SUG_SERVINGS, position: i })),
-    )
-    await Promise.all([reload('recipes'), reload('recipe_ingredients')])
-    onClose()
+    setErr(null)
+    try {
+      const [r] = await db.insert<Recipe>('recipes', [
+        { name: s.name, icon: s.icon, kind: 'receta', servings: SUG_SERVINGS, minutes: s.minutes, meals: s.meals, groups: s.groups, steps: s.steps.join('\n'), note: s.why ?? null, kid_friendly: s.kids, suggested_key: s.key },
+      ])
+      await db.insert<RecipeIngredient>(
+        'recipe_ingredients',
+        s.ing.map(([id, name, g], i) => ({ recipe_id: r.id, food_ref: `bedca:${id}`, name, grams: g * SUG_SERVINGS, position: i })),
+      )
+      await Promise.all([reload('recipes'), reload('recipe_ingredients')])
+      onClose()
+    } catch (e) {
+      setErr((e as Error).message)
+      setBusy(false)
+    }
   }
 
   return (
@@ -328,6 +335,7 @@ function SugeridaDetail({ s, onClose }: { s: Sugerida; onClose: () => void }) {
       <button className={`${btnPrimary} mt-5`} disabled={busy} onClick={add}>
         {busy ? 'Añadiendo…' : 'Añadir a mis recetas'}
       </button>
+      {err && <p className="mt-2 text-bad">No se pudo añadir: {err}</p>}
     </Modal>
   )
 }
