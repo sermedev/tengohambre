@@ -25,7 +25,8 @@ npm run dev
 | --- | --- |
 | `npm run dev` | App en http://localhost:5173 |
 | `npm run build` | Compila para producción |
-| `npm test` | Pruebas del importador de BEDCA |
+| `VITE_DEMO=1 npm run dev` | App sin Supabase, con datos de ejemplo guardados en el navegador |
+| `npm test` | Pruebas del importador de BEDCA y de los alimentos de las recetas Sugeridas |
 | `npm run bedca` | Descarga BEDCA a `public/data/bedca.json` |
 
 ## Estructura
