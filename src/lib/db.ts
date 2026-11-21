@@ -37,6 +37,12 @@ function listen(table: Table, f: () => void) {
   return () => void listeners.get(table)!.delete(f)
 }
 
+// Hogar de la cuenta conectada: cada fila nueva se guarda en él (lo exigen las reglas de seguridad)
+let householdId: string | null = null
+export function setHouseholdId(id: string | null) {
+  householdId = id
+}
+
 function fail(e: { message: string } | null) {
   if (e) throw new Error(e.message)
 }
@@ -50,7 +56,9 @@ const remote: Db = {
     return (data ?? []) as T[]
   },
   async insert<T>(table: Table, rows: Partial<T>[]) {
-    const { data, error } = await supabase.from(table).insert(rows as never).select()
+    if (!householdId) throw new Error('No hay hogar seleccionado. Vuelve a entrar en la app.')
+    const withHousehold = rows.map((r) => ({ household_id: householdId, ...(r as object) }))
+    const { data, error } = await supabase.from(table).insert(withHousehold as never).select()
     fail(error)
     notify(table)
     return (data ?? []) as T[]
