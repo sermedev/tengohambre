@@ -1,0 +1,29 @@
+# Descarga los alimentos de BEDCA (AESAN) y los guarda en public/data/bedca.json mediante un PR.
+# Se lanza a mano: pestaña Actions → «Importar BEDCA» → Run workflow.
+name: Importar BEDCA
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/bedca-import.mjs
+      - name: Subir en una rama nueva
+        run: |
+          b="bedca-$(date -u +%F)"
+          git config user.name "tengohambre-bedca"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$b"
+          git add public/data/bedca.json
+          git commit -m "Alimentos BEDCA $(date -u +%F)"
+          git push -u origin "$b"
+          gh pr create --title "Alimentos BEDCA $(date -u +%F)" --body "Importación automática desde www.bedca.net (AESAN)." --head "$b"
+        env:
+          GH_TOKEN: ${{ github.token }}
