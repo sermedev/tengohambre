@@ -3,6 +3,7 @@ import { SessionCtx } from './session-context'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, supabaseMissing } from './supabase'
 import type { Household } from './types'
+import { DEMO_HOUSEHOLD, demo, seedDemo } from './db'
 
 export type Ctx = {
   loading: boolean
@@ -16,7 +17,7 @@ export type Ctx = {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [household, setHousehold] = useState<Household | null>(null)
-  const [loading, setLoading] = useState(!supabaseMissing)
+  const [loading, setLoading] = useState(demo || !supabaseMissing)
 
   async function loadHousehold() {
     const { data } = await supabase.from('households').select('id,name,invite_code').limit(1).maybeSingle()
@@ -24,6 +25,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    if (demo) {
+      void seedDemo().then(() => {
+        setSession({ user: { email: 'demo@tengohambre.local' } } as Session)
+        setHousehold(DEMO_HOUSEHOLD)
+        setLoading(false)
+      })
+      return
+    }
     if (supabaseMissing) return
     supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session)
