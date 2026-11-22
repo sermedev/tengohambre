@@ -13,6 +13,7 @@ import { Icon } from '../components/Icon'
 import { MacroLine } from '../components/NutTable'
 import { Bar, Card, Empty, Modal, PageTitle, Tabs, btnGhost, btnPrimary, btnSm, input } from '../components/ui'
 import { norm } from '../lib/text'
+import { matchesName } from '../lib/search'
 import { ageInfo, pantryIcon, qtyText } from '../lib/pantry'
 import { MenuTemplates } from './MenuTemplates'
 
@@ -394,7 +395,6 @@ function Panel({ recipes, pantry }: { recipes: ReturnType<typeof useData>['recip
   const { L } = useData()
   const [tab, setTab] = useState<'r' | 's' | 'o'>('r')
   const [q, setQ] = useState('')
-  const k = norm(q.trim())
   const [open, setOpen] = useState(() => {
     try {
       return localStorage.getItem(PANEL_KEY) === 'abierto'
@@ -445,7 +445,7 @@ function Panel({ recipes, pantry }: { recipes: ReturnType<typeof useData>['recip
         {tab === 'r' &&
           (recipes.length ? (
             recipes
-              .filter((r) => !k || norm(r.name).includes(k))
+              .filter((r) => matchesName(q, r.name))
               .map((r) => <PanelItem key={r.id} src={{ kind: 'r', id: r.id }} icon={r.icon} label={r.name} sub={`${fmt(recipeServing(r, L).kcal)} kcal${r.kind === 'precocinado' ? ' · precocinado' : r.minutes ? ` · ${r.minutes} min` : ''}`} />)
           ) : (
             <Empty>Añade recetas en la sección Recetas.</Empty>
@@ -453,7 +453,7 @@ function Panel({ recipes, pantry }: { recipes: ReturnType<typeof useData>['recip
         {tab === 's' &&
           (pantry.filter((p) => p.unit === 'raciones' && p.qty > 0).length ? (
             pantry
-              .filter((p) => p.unit === 'raciones' && p.qty > 0 && (!k || norm(p.name).includes(k)))
+              .filter((p) => p.unit === 'raciones' && p.qty > 0 && matchesName(q, p.name))
               .map((p) => <PanelItem key={p.id} src={{ kind: 's', id: p.id }} icon={pantryIcon(p, p.recipe_id ? L.recipes.get(p.recipe_id)?.icon : undefined)} label={p.name} sub={`${qtyText(p)} · ${p.place} · ${ageInfo(p).text}`} />)
           ) : (
             <Empty>No hay platos cocinados en el almacén.</Empty>
@@ -649,8 +649,8 @@ function Picker({ onPick, meal }: { onPick: (s: Source) => void; meal: MealId })
   const [q, setQ] = useState('')
   const [all, setAll] = useState(false)
   const k = norm(q.trim())
-  const rs = recipes.filter((r) => (!k || norm(r.name).includes(k)) && (all || k || !r.meals.length || r.meals.includes(meal)))
-  const ps = pantry.filter((p) => p.unit === 'raciones' && p.qty > 0 && (!k || norm(p.name).includes(k)))
+  const rs = recipes.filter((r) => matchesName(q, r.name) && (all || k || !r.meals.length || r.meals.includes(meal)))
+  const ps = pantry.filter((p) => p.unit === 'raciones' && p.qty > 0 && matchesName(q, p.name))
   return (
     <div className="mt-5 border-t border-line pt-4">
       <h3 className="mb-2 text-base">Añadir plato</h3>
