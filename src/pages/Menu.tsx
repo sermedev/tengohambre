@@ -9,10 +9,13 @@ import { targetOf } from '../lib/targets'
 import type { EatOut, MealId, Member, PlanItem } from '../lib/types'
 import { GROUPS, MEALS, mealName } from '../data/meals'
 import { Avatar } from '../components/Avatar'
+import { Icon } from '../components/Icon'
 import { MacroLine } from '../components/NutTable'
 import { Bar, Card, Empty, Modal, PageTitle, Tabs, btnGhost, btnPrimary, btnSm, input } from '../components/ui'
 import { norm } from '../lib/text'
 import { ageInfo, pantryIcon, qtyText } from '../lib/pantry'
+
+const PANEL_KEY = 'tengohambre-panel-recetas'
 
 const slotOf = (items: PlanItem[], day: string, meal: MealId) => items.filter((i) => i.day === day && i.meal === meal)
 
@@ -149,7 +152,7 @@ function Semana() {
   })
   const [drag, setDrag] = useState<{ label: string; icon: string } | null>(null)
   const [copyMsg, setCopyMsg] = useState<string | null>(null)
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }))
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 8 } }))
   const today = todayIso()
   const a = parseIso(days[0])
   const b = parseIso(days[6])
@@ -220,7 +223,7 @@ function Semana() {
 
           {/* PC y tablet horizontal: cuadrícula de la semana */}
           <div className="hidden overflow-x-auto lg:block">
-            <div className="grid min-w-[760px] grid-cols-[110px_repeat(7,minmax(0,1fr))] gap-1.5">
+            <div className="grid min-w-[680px] grid-cols-[3.75rem_repeat(7,minmax(0,1fr))] gap-1.5">
               <div />
               {days.map((d, i) => (
                 <div key={d} className={`rounded-lg py-1 text-center text-sm font-semibold ${d === today ? 'bg-accent text-accent-ink' : 'text-muted'}`}>
@@ -286,7 +289,7 @@ function Semana() {
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
-      <div className="flex items-start pt-2 text-xs font-semibold tracking-wider text-muted uppercase">{label}</div>
+      <div className="flex items-start pt-2 text-[0.7rem] leading-tight font-semibold break-words text-muted">{label}</div>
       {children}
     </>
   )
@@ -309,12 +312,29 @@ function Cell({ day, meal, items, onOpen, draggableItems = false }: { day: strin
   )
 }
 
-function ItemChip({ icon, name, onClick }: { icon: string; name: string; onClick?: () => void }) {
+function ItemChip({ icon, name, onClick, handle }: { icon: string; name: string; onClick?: () => void; handle?: ReactNode }) {
   return (
-    <button onClick={onClick} className="flex items-start gap-1.5 rounded-lg bg-surface-2 px-1.5 py-1 text-left text-xs leading-tight font-medium">
+    <div className="flex items-start gap-1 rounded-lg bg-surface-2 px-1 py-1 text-xs leading-tight font-medium">
+      {handle ?? <span aria-hidden="true">{icon}</span>}
+      <button onClick={onClick} className="min-w-0 flex-1 text-left break-words hyphens-auto">
+        {name}
+      </button>
+    </div>
+  )
+}
+
+/** Asa de arrastre: solo el icono arrastra, así el dedo sobre el texto sirve para hacer scroll. */
+function Handle({ icon, label, listeners, attributes, big = false }: { icon: string; label: string; listeners: ReturnType<typeof useDraggable>['listeners']; attributes: ReturnType<typeof useDraggable>['attributes']; big?: boolean }) {
+  return (
+    <span
+      {...listeners}
+      {...attributes}
+      aria-label={`Arrastrar ${label}`}
+      title="Mantén pulsado y arrastra"
+      className={`grid shrink-0 cursor-grab touch-none place-items-center rounded-lg border border-line bg-surface active:cursor-grabbing ${big ? 'size-10 text-xl' : 'size-6 text-sm'}`}
+    >
       <span aria-hidden="true">{icon}</span>
-      <span className="min-w-0 break-words">{name}</span>
-    </button>
+    </span>
   )
 }
 
@@ -324,8 +344,8 @@ function DragItem({ it, onOpen }: { it: PlanItem; onOpen: () => void }) {
   const icon = planItemIcon(it, L)
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: `i:${it.id}`, data: { label, icon } })
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} className={`touch-none ${isDragging ? 'opacity-40' : ''}`}>
-      <ItemChip icon={icon} name={label} onClick={onOpen} />
+    <div ref={setNodeRef} className={isDragging ? 'opacity-40' : ''}>
+      <ItemChip icon={icon} name={label} onClick={onOpen} handle={<Handle icon={icon} label={label} listeners={listeners} attributes={attributes} />} />
     </div>
   )
 }
@@ -336,10 +356,51 @@ function Panel({ recipes, pantry }: { recipes: ReturnType<typeof useData>['recip
   const [tab, setTab] = useState<'r' | 's' | 'o'>('r')
   const [q, setQ] = useState('')
   const k = norm(q.trim())
-  const { setNodeRef: trashRef, isOver: trashOver } = useDroppable({ id: 'trash' })
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(PANEL_KEY) === 'abierto'
+    } catch {
+      return false
+    }
+  })
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        localStorage.setItem(PANEL_KEY, o ? 'plegado' : 'abierto')
+      } catch {
+        /* sin almacenamiento */
+      }
+      return !o
+    })
+  const { setNodeRef: trashRef, isOver: trashOver } = useDroppable({ id: 'trash', disabled: !open })
+
+  if (!open)
+    return (
+      <aside className="sticky top-4 hidden shrink-0 self-start lg:block" aria-label="Recetas para arrastrar">
+        <button
+          onClick={toggle}
+          aria-expanded={false}
+          title="Mostrar recetas para arrastrar"
+          className="flex w-10 flex-col items-center gap-2 rounded-xl border border-line bg-surface py-3 text-sm font-semibold text-muted shadow-card hover:text-accent"
+        >
+          <span className="-scale-x-100">
+            <Icon name="desplegar" size={18} />
+          </span>
+          <span className="[writing-mode:vertical-rl] rotate-180">Recetas</span>
+        </button>
+      </aside>
+    )
+
   return (
     <aside className="sticky top-4 hidden max-h-[calc(100dvh-2rem)] w-72 shrink-0 flex-col gap-3 self-start lg:flex" aria-label="Recetas para arrastrar">
-      <Tabs tabs={[['r', 'Recetas'], ['s', 'Almacén'], ['o', 'Fuera']]} value={tab} onChange={setTab} />
+      <div className="flex items-start justify-between gap-2">
+        <Tabs tabs={[['r', 'Recetas'], ['s', 'Almacén'], ['o', 'Fuera']]} value={tab} onChange={setTab} />
+        <button onClick={toggle} aria-expanded={true} aria-label="Plegar panel de recetas" title="Plegar panel" className="mt-1 rounded-lg p-1.5 text-muted hover:bg-surface-2">
+          <span className="block -scale-x-100">
+            <Icon name="plegar" size={18} />
+          </span>
+        </button>
+      </div>
       {tab !== 'o' && <input className={`${input} -mt-2`} placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar en el panel" />}
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
         {tab === 'r' &&
@@ -363,7 +424,7 @@ function Panel({ recipes, pantry }: { recipes: ReturnType<typeof useData>['recip
       <div ref={trashRef} className={`rounded-xl border-2 border-dashed p-3 text-center text-sm ${trashOver ? 'border-bad bg-bad-soft text-bad' : 'border-line text-muted'}`}>
         Suelta aquí para quitar del menú
       </div>
-      <p className="text-xs text-muted">Arrastra una receta a un hueco para añadirla (puedes poner varias). Arrastra un plato del menú a otro hueco para moverlo.</p>
+      <p className="text-xs text-muted">Arrastra una receta desde su icono a un hueco para añadirla (puedes poner varias). Arrastra un plato del menú desde su icono a otro hueco para moverlo.</p>
     </aside>
   )
 }
@@ -371,10 +432,8 @@ function Panel({ recipes, pantry }: { recipes: ReturnType<typeof useData>['recip
 function PanelItem({ src, icon, label, sub }: { src: Source; icon: string; label: string; sub: string }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: sourceKey(src), data: { label, icon } })
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} className={`flex cursor-grab touch-none items-center gap-2 rounded-xl border border-line bg-surface px-2.5 py-2 ${isDragging ? 'opacity-40' : ''}`}>
-      <span className="text-xl" aria-hidden="true">
-        {icon}
-      </span>
+    <div ref={setNodeRef} className={`flex items-center gap-2 rounded-xl border border-line bg-surface px-2 py-1.5 ${isDragging ? 'opacity-40' : ''}`}>
+      <Handle icon={icon} label={label} listeners={listeners} attributes={attributes} big />
       <span className="min-w-0">
         <b className="block truncate text-sm font-semibold">{label}</b>
         <span className="block truncate text-xs text-muted">{sub}</span>
