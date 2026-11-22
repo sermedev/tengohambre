@@ -9,6 +9,7 @@ export const SOURCES: SourceGroup[] = [
       { title: 'Alimentación saludable', url: 'https://www.who.int/es/news-room/fact-sheets/detail/healthy-diet', use: 'Equilibrio del menú' },
       { title: 'Actividad física', url: 'https://www.who.int/es/news-room/fact-sheets/detail/physical-activity', use: 'Minutos recomendados' },
       { title: 'Directrices sobre actividad física y hábitos sedentarios', url: 'https://www.who.int/es/publications/b/55501', use: 'Adultos y niños' },
+      { title: 'Directriz sobre grasas saturadas y trans (2023)', url: 'https://www.who.int/publications/i/item/9789240073630', use: 'Grasa saturada' },
       { title: 'Obesidad y sobrepeso', url: 'https://www.who.int/es/news-room/fact-sheets/detail/obesity-and-overweight', use: 'IMC' },
       { title: 'Perímetro de cintura: informe de expertos', url: 'https://www.who.int/publications/i/item/9789241501491', use: 'Cintura' },
       { title: 'Referencia de crecimiento 5–19 años: IMC para la edad', url: 'https://www.who.int/tools/growth-reference-data-for-5to19-years/indicators/bmi-for-age', use: 'IMC de los niños' },
@@ -20,6 +21,9 @@ export const SOURCES: SourceGroup[] = [
       { title: 'Valores dietéticos de referencia', url: 'https://www.efsa.europa.eu/en/topics/topic/dietary-reference-values', use: 'Proteína y nutrientes' },
       { title: 'DRV Finder (buscador de valores de referencia)', url: 'https://multimedia.efsa.europa.eu/drvs/index.htm', use: 'Por edad y sexo' },
       { title: 'Necesidades medias de energía', url: 'https://www.efsa.europa.eu/en/press/news/130110', use: 'Calorías y actividad' },
+      { title: 'Valores de referencia de hidratos de carbono y fibra (2010)', url: 'https://www.efsa.europa.eu/en/efsajournal/pub/1462', use: 'Hidratos y fibra' },
+      { title: 'Valores de referencia de grasas (2010)', url: 'https://www.efsa.europa.eu/en/efsajournal/pub/1461', use: 'Grasa' },
+      { title: 'Valores de referencia de sodio (2019)', url: 'https://pmc.ncbi.nlm.nih.gov/articles/PMC7009309/', use: 'Sal por edad' },
     ],
   },
   {

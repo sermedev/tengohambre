@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { db, type Table } from './db'
 import type { BedcaFood, Lookup } from './nutrition'
-import type { Food, Member, PantryItem, PlanItem, Recipe, RecipeIngredient, WeightEntry } from './types'
+import type { Food, Member, PantryItem, PlanItem, Recipe, RecipeIngredient, SavedProduct, ShoppingItem, WeightEntry } from './types'
 
 export type Data = {
   ready: boolean
@@ -12,6 +12,8 @@ export type Data = {
   recipes: Recipe[]
   ingredients: RecipeIngredient[]
   pantry: PantryItem[]
+  shopping: ShoppingItem[]
+  saved: SavedProduct[]
   bedca: Map<number, BedcaFood>
   L: Lookup
   reload: (t: Table) => Promise<void>
