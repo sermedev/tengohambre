@@ -3,6 +3,12 @@ import type { EatOut, Food, Member, PantryItem, PlanItem, Recipe, RecipeIngredie
 /** Nutrientes que la app suma. Todo en gramos salvo kcal. */
 export type Nut = { kcal: number; protein_g: number; carbs_g: number; sugars_g: number; fat_g: number; sat_fat_g: number; fiber_g: number; salt_g: number }
 export const NUT_KEYS = ['kcal', 'protein_g', 'carbs_g', 'sugars_g', 'fat_g', 'sat_fat_g', 'fiber_g', 'salt_g'] as const
+/**
+ * "Rica en proteína": al menos el 20 % de la energía procede de la proteína
+ * (criterio de "alto contenido de proteínas" del Reglamento (CE) 1924/2006, 4 kcal/g)
+ * y, para que el plato aporte de verdad, al menos 15 g por ración de adulto.
+ */
+export const highProtein = (n: Pick<Nut, 'kcal' | 'protein_g'>) => n.kcal > 0 && n.protein_g * 4 >= 0.2 * n.kcal && n.protein_g >= 15
 export const zero = (): Nut => ({ kcal: 0, protein_g: 0, carbs_g: 0, sugars_g: 0, fat_g: 0, sat_fat_g: 0, fiber_g: 0, salt_g: 0 })
 
 export function addTo(a: Nut, b: Partial<Nut>, f = 1) {
