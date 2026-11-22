@@ -348,9 +348,20 @@ function Cell({ day, meal, items, onOpen, onRemove, draggableItems = false }: { 
       className={`flex min-h-16 flex-col gap-1 rounded-xl border p-1.5 ${isOver ? 'border-accent bg-accent-soft' : 'border-line bg-surface'}`}
     >
       {items.map((it) => (draggableItems ? <DragItem key={it.id} it={it} onOpen={onOpen} onRemove={() => onRemove(it.id)} /> : <ItemChip key={it.id} icon={planItemIcon(it, L)} name={planItemName(it, L)} onClick={onOpen} onRemove={() => onRemove(it.id)} />))}
-      <button onClick={onOpen} className={`rounded-lg text-left text-xs font-semibold text-muted hover:text-accent ${items.length ? 'px-1.5 py-0.5' : 'flex-1 px-1.5 py-2'}`} aria-label={`Editar ${mealName(meal)} del ${dayLabel(day)}`}>
-        {items.length ? '+ / editar' : '+ Añadir'}
-      </button>
+      {items.length ? (
+        <button
+          onClick={onOpen}
+          className="-m-0.5 mt-auto self-end rounded-md p-1.5 text-muted opacity-70 hover:bg-surface-2 hover:text-accent hover:opacity-100"
+          aria-label={`Editar ${mealName(meal)} del ${dayLabel(day)}`}
+          title="Editar"
+        >
+          <Icon name="lapiz" size={14} />
+        </button>
+      ) : (
+        <button onClick={onOpen} className="flex-1 rounded-lg px-1.5 py-2 text-left text-xs font-semibold text-muted hover:text-accent" aria-label={`Editar ${mealName(meal)} del ${dayLabel(day)}`}>
+          + Añadir
+        </button>
+      )}
     </div>
   )
 }
