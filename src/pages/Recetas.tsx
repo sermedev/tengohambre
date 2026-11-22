@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { db } from '../lib/db'
 import { norm } from '../lib/text'
+import { matchesName, searchByName } from '../lib/search'
 import { useData } from '../lib/data-context'
-import { fmt, ingredientsServing, recipeServing, type BedcaFood } from '../lib/nutrition'
+import { fmt, highProtein, ingredientsServing, recipeServing, type BedcaFood } from '../lib/nutrition'
 import type { Food, MealId, Recipe, RecipeIngredient } from '../lib/types'
 import { GROUPS, MEALS, RECIPE_ICONS } from '../data/meals'
 import { SUGERIDAS, SUG_SERVINGS, type Sugerida } from '../data/sugeridas'
@@ -11,8 +12,9 @@ import { Card, Chip, Empty, Field, Modal, PageTitle, Tabs, btnDanger, btnGhost, 
 
 const count = (r: { groups: string[] }, g: string) => r.groups.filter((x) => x === g).length
 
-const FILTERS: [string, string, (r: { groups: string[]; minutes: number | null; kid_friendly: boolean; meals: MealId[] }) => boolean][] = [
+const FILTERS: [string, string, (r: { groups: string[]; minutes: number | null; kid_friendly: boolean; meals: MealId[]; hp: boolean }) => boolean][] = [
   ['all', 'Todas', () => true],
+  ['proteina', 'Ricas en proteína', (r) => r.hp],
   ['legumbre', 'Legumbre', (r) => count(r, 'legumbre') > 0],
   ['pescado', 'Pescado', (r) => count(r, 'pescado') > 0],
   ['huevo', 'Huevo', (r) => count(r, 'huevo') > 0],
@@ -42,8 +44,12 @@ export function Recetas() {
   const filt = FILTERS.find((x) => x[0] === f)![2]
   const k = norm(q.trim())
 
-  const list = (tab === 'mias' ? mine : pres).filter((r) => (!k || norm(r.name).includes(k)) && filt(r))
-  const sugList = sugs.filter((s) => (!k || norm(s.name).includes(k)) && filt({ groups: s.groups, minutes: s.minutes, kid_friendly: s.kids, meals: s.meals }))
+  const list = (tab === 'mias' ? mine : pres)
+    .map((r) => ({ r, n: recipeServing(r, L) }))
+    .filter(({ r, n }) => matchesName(q, r.name) && filt({ ...r, hp: highProtein(n) }))
+  const sugList = sugs
+    .map((s) => ({ s, n: ingredientsServing(s.ing.map(([id, , g]) => ({ food_ref: `bedca:${id}`, grams: g })), 1, L) }))
+    .filter(({ s, n }) => matchesName(q, s.name) && filt({ groups: s.groups, minutes: s.minutes, kid_friendly: s.kids, meals: s.meals, hp: highProtein(n) }))
   const openRecipe = open ? L.recipes.get(open) : undefined
 
   return (
@@ -73,7 +79,7 @@ export function Recetas() {
         <input className={`${input} mb-4 max-w-xs`} placeholder="Buscar receta…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar receta" />
       </div>
       {tab === 'precocinados' && <p className="mb-3 text-sm text-muted">Platos ya preparados del súper (lasaña, sushi, croquetas…). Se crean con los datos de la etiqueta y se usan en el menú como cualquier receta.</p>}
-      {tab === 'sugeridas' && <p className="mb-3 text-sm text-muted">Recetas equilibradas y pensadas para niños, con ingredientes de BEDCA. Ábrelas y añade a tu recetario las que te gusten; luego puedes cambiarlas.</p>}
+      {tab === 'sugeridas' && <p className="mb-3 text-sm text-muted">Recetas equilibradas y pensadas para niños, con ingredientes de BEDCA que encuentras en Mercadona. Filtra por «Ricas en proteína» para los días de entreno. Ábrelas y añade a tu recetario las que te gusten; luego puedes cambiarlas.</p>}
       <div className="mb-4 flex flex-wrap gap-2">
         {FILTERS.map(([key, n]) => (
           <Chip key={key} on={f === key} onClick={() => setF(key)}>
@@ -87,24 +93,22 @@ export function Recetas() {
       ) : tab === 'sugeridas' ? (
         sugList.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
-            {sugList.map((s) => {
-              const n = ingredientsServing(s.ing.map(([id, , g]) => ({ food_ref: `bedca:${id}`, grams: g })), 1, L)
-              return (
-                <RecipeCard key={s.key} icon={s.icon} name={s.name} sub={`${fmt(n.kcal)} kcal/ración · ${s.minutes} min`} groups={s.groups} note={s.why} onClick={() => setOpenSug(s)} />
-              )
-            })}
+            {sugList.map(({ s, n }) => (
+              <RecipeCard key={s.key} icon={s.icon} name={s.name} sub={`${fmt(n.kcal)} kcal · ${fmt(n.protein_g)} g prot. · ${s.minutes} min`} hp={highProtein(n)} groups={s.groups} note={s.why} onClick={() => setOpenSug(s)} />
+            ))}
           </div>
         ) : (
           <Empty>{k || f !== 'all' ? 'No hay sugerencias con ese filtro.' : 'Ya has añadido todas las sugerencias.'}</Empty>
         )
       ) : list.length ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
-          {list.map((r) => (
+          {list.map(({ r, n }) => (
             <RecipeCard
               key={r.id}
               icon={r.icon}
               name={r.name}
-              sub={`${fmt(recipeServing(r, L).kcal)} kcal/ración${r.kind === 'precocinado' ? ` · ${fmt(Number(r.portion_g ?? 0))} g` : r.minutes ? ` · ${r.minutes} min` : ''}`}
+              hp={highProtein(n)}
+              sub={`${fmt(n.kcal)} kcal · ${fmt(n.protein_g)} g prot.${r.kind === 'precocinado' ? ` · ${fmt(Number(r.portion_g ?? 0))} g` : r.minutes ? ` · ${r.minutes} min` : ''}`}
               groups={r.groups}
               onClick={() => setOpen(r.id)}
             />
@@ -138,10 +142,11 @@ export function Recetas() {
   )
 }
 
-function GroupBadges({ groups }: { groups: string[] }) {
+function GroupBadges({ groups, hp }: { groups: string[]; hp?: boolean }) {
   const uniq = [...new Set(groups)].filter((g) => g !== 'lacteo' && g !== 'fruta')
   return (
     <span className="flex flex-wrap gap-1">
+      {hp && <ProteinBadge />}
       {uniq.map((g) => (
         <span key={g} className={`rounded-full px-2 py-0.5 text-xs font-semibold ${g === 'roja' || g === 'precocinado' ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'}`}>
           {GROUPS.find((x) => x.k === g)?.n.split(' ')[0] ?? g}
@@ -151,7 +156,11 @@ function GroupBadges({ groups }: { groups: string[] }) {
   )
 }
 
-function RecipeCard({ icon, name, sub, groups, note, onClick }: { icon: string; name: string; sub: string; groups: string[]; note?: string; onClick: () => void }) {
+function ProteinBadge() {
+  return <span className="rounded-full bg-warm-soft px-2 py-0.5 text-xs font-semibold text-warm" title="Al menos el 20 % de la energía de proteína y 15 g por ración">💪 Proteína</span>
+}
+
+function RecipeCard({ icon, name, sub, groups, note, hp, onClick }: { icon: string; name: string; sub: string; groups: string[]; note?: string; hp?: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className="flex flex-col items-start gap-1.5 rounded-card border border-line bg-surface p-3 text-left shadow-card hover:border-accent">
       <span className="text-3xl" aria-hidden="true">
@@ -159,7 +168,7 @@ function RecipeCard({ icon, name, sub, groups, note, onClick }: { icon: string; 
       </span>
       <b className="font-semibold">{name}</b>
       <span className="num text-sm text-muted">{sub}</span>
-      <GroupBadges groups={groups} />
+      <GroupBadges groups={groups} hp={hp} />
       {note && <span className="text-sm">{note}</span>}
     </button>
   )
@@ -397,24 +406,25 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
 function FoodSearch({ onPick }: { onPick: (f: BedcaFood | Food, ref: string) => void }) {
   const { bedca, foods } = useData()
   const [q, setQ] = useState('')
-  const res = useMemo(() => {
-    const k = norm(q.trim())
-    if (k.length < 2) return []
-    const words = k.split(/\s+/)
-    const match = (name: string) => words.every((w) => norm(name).includes(w))
-    const own = foods.filter((f) => match(f.name)).map((f) => ({ ref: `food:${f.id}`, f, label: f.name, sub: `Etiqueta${f.brand ? ` · ${f.brand}` : ''} · ${fmt(Number(f.kcal ?? 0))} kcal/100 g` }))
-    const bd = [...bedca.values()]
-      .filter((f) => match(f.name))
-      .sort((a, b) => (norm(a.name).startsWith(words[0]) ? 0 : 1) - (norm(b.name).startsWith(words[0]) ? 0 : 1) || a.name.length - b.name.length)
-      .map((f) => ({ ref: `bedca:${f.id}`, f, label: f.name, sub: `BEDCA · ${fmt(f.kcal ?? 0)} kcal/100 g` }))
-    return [...own, ...bd].slice(0, 12)
+  const { res, partial } = useMemo(() => {
+    if (q.trim().length < 2) return { res: [], partial: false }
+    // Alimentos propios (etiqueta) y BEDCA juntos, con la búsqueda tolerante
+    type Hit = { ref: string; f: BedcaFood | Food; label: string; sub: string }
+    const all: Hit[] = [
+      ...foods.map((f) => ({ ref: `food:${f.id}`, f, label: f.name, sub: `Etiqueta${f.brand ? ` · ${f.brand}` : ''} · ${fmt(Number(f.kcal ?? 0))} kcal/100 g` })),
+      ...[...bedca.values()].map((f) => ({ ref: `bedca:${f.id}`, f, label: f.name, sub: `BEDCA · ${fmt(f.kcal ?? 0)} kcal/100 g` })),
+    ]
+    const r = searchByName(all, q, (h) => h.label, 12)
+    return { res: r.items, partial: r.partial }
   }, [q, bedca, foods])
 
   return (
     <div>
       <input className={input} placeholder="Añadir ingrediente: busca en BEDCA (p. ej. «lenteja», «pollo pechuga»)" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar ingrediente" />
+      {q.trim().length >= 2 && !res.length && <p className="mt-1 text-sm text-muted">No hay ningún alimento con ese nombre.</p>}
       {res.length > 0 && (
         <div className="mt-1 max-h-72 overflow-y-auto rounded-xl border border-line bg-surface shadow-card">
+          {partial && <p className="px-3 py-2 text-xs text-muted">No está tal cual. Estos son los más parecidos:</p>}
           {res.map((x) => (
             <button
               key={x.ref}

@@ -5,6 +5,7 @@ import { addDays, dayLabel, mondayOf, todayIso } from '../lib/dates'
 import { menuNeeds, needNote, pendingMatch, qtyLabel, type NeedLine } from '../lib/shopping'
 import { CAT_NAMES, addProduct } from '../lib/shopping-db'
 import { norm } from '../lib/text'
+import { matchesName } from '../lib/search'
 import type { SavedProduct, ShoppingItem } from '../lib/types'
 import { CATALOG, HABITUALES, SECTIONS } from '../data/catalog'
 import { Card, Chip, Empty, Modal, PageTitle, Tabs, btnGhost, btnPrimary, btnSm, input } from '../components/ui'
@@ -61,7 +62,7 @@ function Lista() {
   const pend = shopping.filter((s) => !s.checked)
   const done = shopping.filter((s) => s.checked).sort((a, b) => b.updated_at.localeCompare(a.updated_at))
   const have = new Set(pend.map((s) => norm(s.name)))
-  const sugg = q.trim() ? [...known.values()].filter((k) => norm(k.name).includes(norm(q.trim())) && !have.has(norm(k.name))).slice(0, 6) : []
+  const sugg = q.trim() ? [...known.values()].filter((k) => matchesName(q, k.name) && !have.has(norm(k.name))).slice(0, 6) : []
   const hab = HABITUALES.filter(([n]) => !have.has(norm(n)))
 
   async function add(name: string, sec: string) {
@@ -211,7 +212,7 @@ function Catalogo() {
     ['__mine', 'Mis productos', mine.map((p) => ({ name: p.name, section: p.section, saved: p }))],
     ...SECTIONS.map((s) => [s, s, CATALOG[s].map((n) => ({ name: n, section: s }))] as [string, string, { name: string; section: string }[]]),
   ]
-  const shown = groups.filter(([k]) => sec === 'all' || sec === k).map(([k, t, its]) => [k, t, its.filter((i) => !nq || norm(i.name).includes(nq))] as const)
+  const shown = groups.filter(([k]) => sec === 'all' || sec === k).map(([k, t, its]) => [k, t, its.filter((i) => matchesName(q, i.name))] as const)
   const exists = groups.some(([, , its]) => its.some((i) => norm(i.name) === nq))
 
   async function toggle(name: string, section: string) {
