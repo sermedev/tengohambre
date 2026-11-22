@@ -11,7 +11,7 @@ import { GROUPS, MEALS, mealName } from '../data/meals'
 import { Avatar } from '../components/Avatar'
 import { Icon } from '../components/Icon'
 import { MacroLine } from '../components/NutTable'
-import { Bar, Card, Empty, Modal, PageTitle, Tabs, btnGhost, btnPrimary, btnSm, input } from '../components/ui'
+import { Bar, Card, Empty, Modal, PageTitle, Tabs, btnDanger, btnGhost, btnPrimary, btnSm, input } from '../components/ui'
 import { norm } from '../lib/text'
 import { matchesName } from '../lib/search'
 import { ageInfo, pantryIcon, qtyText } from '../lib/pantry'
@@ -155,6 +155,7 @@ function Semana() {
   const [drag, setDrag] = useState<{ label: string; icon: string; fromMenu: boolean } | null>(null)
   const [notice, setNotice] = useState<{ text: string; undo?: Undo } | null>(null)
   const [templates, setTemplates] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const goWeek = (m: string) => {
     setMonday(m)
     setNotice(null)
@@ -193,6 +194,15 @@ function Semana() {
     await reload()
   }
 
+  async function clearWeek() {
+    const removed = items
+    setClearing(false)
+    if (!removed.length) return
+    await db.remove('meal_plan_items', removed.map((i) => i.id))
+    setNotice({ text: `Semana vaciada: ${removed.length} ${removed.length === 1 ? 'plato quitado' : 'platos quitados'}.`, undo: { added: [], removed } })
+    await reload()
+  }
+
   async function copyPrev() {
     const prev = await db.list<PlanItem>('meal_plan_items', { col: 'day', from: addDays(monday, -7), to: addDays(monday, -1) })
     if (!prev.length) return setNotice({ text: 'La semana anterior está vacía.' })
@@ -228,6 +238,9 @@ function Semana() {
               </button>
               <button className={btnGhost} onClick={() => setTemplates(true)}>
                 Menús tipo
+              </button>
+              <button className={btnDanger} disabled={!items.length} onClick={() => setClearing(true)}>
+                Vaciar semana
               </button>
             </div>
           </div>
@@ -312,6 +325,22 @@ function Semana() {
         )}
       </DragOverlay>
       {slot && <SlotEditor day={slot.day} meal={slot.meal} items={slotOf(items, slot.day, slot.meal)} onClose={() => setSlot(null)} onChange={reload} />}
+      {clearing && (
+        <Modal title="¿Vaciar esta semana?" onClose={() => setClearing(false)}>
+          <p className="mb-4">
+            Se quitarán los {items.length} {items.length === 1 ? 'plato' : 'platos'} del menú del {a.getDate()}
+            {a.getMonth() !== b.getMonth() ? ` de ${MONTHS[a.getMonth()]}` : ''} al {b.getDate()} de {MONTHS[b.getMonth()]}. Las recetas, el almacén y los menús tipo no cambian, y justo después podrás deshacerlo.
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button className={btnGhost} onClick={() => setClearing(false)}>
+              Cancelar
+            </button>
+            <button className={btnDanger} onClick={() => void clearWeek()}>
+              Sí, vaciar
+            </button>
+          </div>
+        </Modal>
+      )}
       {templates && (
         <MenuTemplates
           monday={monday}
