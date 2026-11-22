@@ -3,10 +3,13 @@ import { db } from '../lib/db'
 import { useData } from '../lib/data-context'
 import type { PantryItem, Place, Unit } from '../lib/types'
 import { STEP, UNITS, ageInfo, pantryIcon, qtyText, today } from '../lib/pantry'
+import { addProduct } from '../lib/shopping-db'
+import { sectionOf } from '../lib/shopping'
 import { Card, Empty, Field, PageTitle, Tabs, btnPrimary, btnSm, input } from '../components/ui'
 
 export function Almacen() {
-  const { pantry, recipes, L, reload, ready } = useData()
+  const { pantry, recipes, L, reload, ready, shopping, saved } = useData()
+  const [msg, setMsg] = useState<string | null>(null)
   const [tab, setTab] = useState<'despensa' | 'frio'>('frio')
   const [name, setName] = useState('')
   const [recipeId, setRecipeId] = useState('')
@@ -42,7 +45,7 @@ export function Almacen() {
 
   return (
     <>
-      <PageTitle sub="Lo que hay en casa. Lo apuntáis a mano; los platos cocinados se pueden poner en el menú desde aquí.">Almacén</PageTitle>
+      <PageTitle sub="Lo que hay en casa. Lo apuntáis a mano; los platos cocinados se pueden poner en el menú desde aquí, y lo que apuntéis se descuenta al pasar el menú a la compra.">Almacén</PageTitle>
       <Tabs
         tabs={[
           ['frio', 'Nevera y congelador'],
@@ -104,6 +107,11 @@ export function Almacen() {
         {recipeId && <p className="mt-2 text-sm text-muted">Al ser un plato de tus recetas, la app sabe sus nutrientes cuando lo pongas en el menú.</p>}
       </Card>
 
+      {msg && (
+        <p className="mb-3 rounded-xl bg-accent-soft p-2.5 text-sm" role="status">
+          {msg}
+        </p>
+      )}
       {!ready ? (
         <p className="text-muted">Cargando…</p>
       ) : list.length === 0 ? (
@@ -134,6 +142,19 @@ export function Almacen() {
                     +
                   </button>
                 </div>
+                {!p.recipe_id && (
+                  <button
+                    className={`${btnSm} text-muted`}
+                    title="Añadir a la lista de la compra"
+                    aria-label={`Añadir ${p.name} a la compra`}
+                    onClick={async () => {
+                      const added = await addProduct(p.name, sectionOf(p.name, saved), shopping, saved)
+                      setMsg(added ? `${p.name} añadido a la lista de la compra.` : `${p.name} ya estaba en la lista de la compra.`)
+                    }}
+                  >
+                    🛒
+                  </button>
+                )}
                 <button
                   className={`${btnSm} text-muted`}
                   aria-label={`Borrar ${p.name}`}

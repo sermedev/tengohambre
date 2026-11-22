@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { db } from '../lib/db'
 import { useData, usePlan } from '../lib/data-context'
-import { DSHORT, addDays, ageOn, mondayOf, todayIso } from '../lib/dates'
-import { fmt } from '../lib/nutrition'
+import { DLONG, DSHORT, MONTHS, addDays, ageOn, mondayOf, parseIso, todayIso } from '../lib/dates'
+import { addTo, fmt, zero } from '../lib/nutrition'
+import { referenceRows } from '../lib/reference'
 import { personDay } from '../lib/plan'
 import { ACTS_ADULT, ACTS_KID, GOALS_ADULT, GOAL_KID, SPORTS, bmiCategory, isKid, latestWeight, targetOf, whoActivity } from '../lib/targets'
 import type { Member, WeightEntry } from '../lib/types'
 import { Avatar } from '../components/Avatar'
-import { Bar, Card, Field, Modal, PageTitle, btnGhost, btnPrimary, btnSm, input } from '../components/ui'
+import { Bar, Card, Field, Modal, PageTitle, Tabs, btnGhost, btnPrimary, btnSm, input } from '../components/ui'
 
 const COLORS = ['--p1', '--p2', '--p3', '--p4', '--p5', '--p6', '--p7', '--p8']
 const ICONS = ['', '👨', '👩', '👦', '🧒', '👧', '🧔', '👱', '🦸', '⚽', '🎾', '🏋️']
@@ -151,32 +152,90 @@ function Evaluation({ m, kg }: { m: Member; kg?: number }) {
 
 function WeekIntake({ m }: { m: Member }) {
   const { L, weights } = useData()
-  const monday = mondayOf(todayIso())
+  const [monday, setMonday] = useState(() => mondayOf(todayIso()))
+  const [view, setView] = useState<'semana' | 'dia'>('semana')
+  const [dayIdx, setDayIdx] = useState(() => (new Date().getDay() + 6) % 7)
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(monday, i)), [monday])
-  const { items } = usePlan(monday, days[6])
+  const { items, loading } = usePlan(monday, days[6])
   const tg = targetOf(m, weights)
+  const perDay = days.map((d) => personDay(items.filter((x) => x.day === d), m, L))
+  const withMenu = perDay.filter((n) => n.kcal > 0)
+  const avg = zero()
+  for (const n of withMenu) addTo(avg, n, 1 / withMenu.length)
+  const thisWeek = monday === mondayOf(todayIso())
+  const shown = view === 'semana' ? avg : perDay[dayIdx]
+
   return (
-    <Card>
-      <h2 className="mb-1 text-lg">Esta semana según el menú</h2>
-      <p className="mb-3 text-sm text-muted">Calorías planificadas cada día frente a su objetivo.</p>
-      <div className="flex flex-col gap-2">
-        {days.map((d, i) => {
-          const n = personDay(
-            items.filter((x) => x.day === d),
-            m,
-            L,
-          )
-          return (
-            <div key={d} className="grid grid-cols-[2.5rem_1fr_6.5rem] items-center gap-2 text-sm">
-              <b className={d === todayIso() ? 'text-accent' : ''}>{DSHORT[i]}</b>
-              <Bar value={n.kcal} target={tg?.kcal ?? 0} color={`var(${m.color})`} />
-              <span className="num text-right">
-                {fmt(n.kcal)} <span className="text-muted">kcal</span>
-              </span>
-            </div>
-          )
-        })}
+    <Card className="lg:col-span-2">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h2 className="mr-auto text-lg">Resumen de lo que come</h2>
+        <Tabs tabs={[['semana', 'Semana'], ['dia', 'Día']]} value={view} onChange={setView} />
       </div>
+      <div className="mb-3 flex items-center gap-2 text-sm">
+        <button className={`${btnSm} border border-line`} aria-label="Semana anterior" onClick={() => setMonday(addDays(monday, -7))}>
+          ‹
+        </button>
+        <b className="min-w-40 text-center">{thisWeek ? 'Esta semana' : `Semana del ${parseIso(monday).getDate()} de ${MONTHS[parseIso(monday).getMonth()]}`}</b>
+        <button className={`${btnSm} border border-line`} aria-label="Semana siguiente" onClick={() => setMonday(addDays(monday, 7))}>
+          ›
+        </button>
+        {!thisWeek && (
+          <button className="text-sm font-semibold text-accent" onClick={() => setMonday(mondayOf(todayIso()))}>
+            Volver a hoy
+          </button>
+        )}
+      </div>
+      {loading ? (
+        <p className="text-muted">Cargando…</p>
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <div>
+            <p className="mb-2 text-sm text-muted">Calorías planificadas cada día frente a su objetivo. Toca un día para ver su detalle.</p>
+            <div className="flex flex-col gap-1">
+              {days.map((d, i) => {
+                const n = perDay[i]
+                const on = view === 'dia' && i === dayIdx
+                return (
+                  <button
+                    key={d}
+                    onClick={() => {
+                      setDayIdx(i)
+                      setView('dia')
+                    }}
+                    aria-pressed={on}
+                    className={`grid grid-cols-[2.5rem_1fr_6.5rem] items-center gap-2 rounded-lg px-1.5 py-1 text-left text-sm ${on ? 'bg-accent-soft' : ''}`}
+                  >
+                    <b className={d === todayIso() ? 'text-accent' : ''}>{DSHORT[i]}</b>
+                    <Bar value={n.kcal} target={tg?.kcal ?? 0} color={`var(${m.color})`} />
+                    <span className="num text-right">
+                      {n.kcal > 0 ? fmt(n.kcal) : '—'} <span className="text-muted">kcal</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div>
+            <h3 className="mb-1 font-semibold">{view === 'semana' ? `Media diaria (${withMenu.length} ${withMenu.length === 1 ? 'día' : 'días'} con menú)` : `${DLONG[dayIdx]} ${parseIso(days[dayIdx]).getDate()}`}</h3>
+            {shown.kcal === 0 ? (
+              <p className="text-sm text-muted">{view === 'semana' ? 'No hay nada en el menú de esta semana.' : 'Ese día no tiene nada en el menú para esta persona.'}</p>
+            ) : (
+              <div className="flex flex-col">
+                {referenceRows(shown, m, tg).map((r) => (
+                  <div key={r.k} className="grid grid-cols-[7rem_4.5rem_1fr] items-baseline gap-2 border-t border-line py-1.5 text-sm first:border-t-0">
+                    <b>{r.label}</b>
+                    <span className={`num font-bold ${r.tone === 'muted' ? '' : `text-${r.tone}`}`}>{r.value}</span>
+                    <span className="text-xs text-muted">{r.ref}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      <p className="mt-3 text-xs text-muted">
+        Solo cuenta lo que está en el menú con la ración de esta persona: si falta alguna comida (o la fruta del postre), saldrá por debajo. Referencias de EFSA y OMS; las comidas fuera de casa son una estimación.
+      </p>
     </Card>
   )
 }

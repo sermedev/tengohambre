@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { DataCtx, type Data } from './data-context'
 import { db, type Table } from './db'
 import { loadBedca, type BedcaFood } from './nutrition'
-import type { Food, Member, PantryItem, Recipe, RecipeIngredient, WeightEntry } from './types'
+import type { Food, Member, PantryItem, Recipe, RecipeIngredient, SavedProduct, ShoppingItem, WeightEntry } from './types'
 
-const TABLES = ['members', 'weight_log', 'foods', 'recipes', 'recipe_ingredients', 'pantry_items'] as const
+const TABLES = ['members', 'weight_log', 'foods', 'recipes', 'recipe_ingredients', 'pantry_items', 'shopping_items', 'saved_products'] as const
 
 /** Carga una vez los datos del hogar (son pocos) y los mantiene al día con los cambios del otro móvil. */
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -46,6 +46,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       recipes,
       ingredients,
       pantry,
+      shopping: (rows.shopping_items ?? []) as ShoppingItem[],
+      saved: ((rows.saved_products ?? []) as SavedProduct[]).slice().sort((a, b) => a.name.localeCompare(b.name, 'es')),
       bedca,
       L: {
         bedca,

@@ -105,3 +105,19 @@ export type WeightEntry = {
   weight_kg: number | null
   waist_cm: number | null
 }
+
+export type ShoppingItem = {
+  id: string
+  household_id: string
+  name: string
+  section: string
+  qty: number | null
+  unit: string | null
+  checked: boolean
+  from_menu: boolean
+  note: string | null
+  updated_at: string
+}
+
+/** Producto que la familia ha añadido al catálogo («Mis productos»). */
+export type SavedProduct = { id: string; household_id: string; name: string; section: string }
