@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { db } from '../lib/db'
 import { useData, usePlan } from '../lib/data-context'
@@ -152,7 +152,7 @@ function Semana() {
     const t = todayIso()
     return days.includes(t) ? t : monday
   })
-  const [drag, setDrag] = useState<{ label: string; icon: string } | null>(null)
+  const [drag, setDrag] = useState<{ label: string; icon: string; fromMenu: boolean } | null>(null)
   const [notice, setNotice] = useState<{ text: string; undo?: Undo } | null>(null)
   const [templates, setTemplates] = useState(false)
   const goWeek = (m: string) => {
@@ -165,18 +165,20 @@ function Semana() {
   const b = parseIso(days[6])
 
   function onStart(e: DragStartEvent) {
-    setDrag((e.active.data.current as { label: string; icon: string }) ?? null)
+    const d = e.active.data.current as { label: string; icon: string } | undefined
+    setDrag(d ? { ...d, fromMenu: String(e.active.id).startsWith('i:') } : null)
+  }
+  async function removeItem(id: string) {
+    await db.remove('meal_plan_items', [id])
+    await reload()
   }
   async function onEnd(e: DragEndEvent) {
     setDrag(null)
     const over = e.over?.id as string | undefined
     const id = e.active.id as string
     if (!over) return
-    if (over === 'trash') {
-      if (id.startsWith('i:')) {
-        await db.remove('meal_plan_items', [id.slice(2)])
-        await reload()
-      }
+    if (over === 'trash-float') {
+      if (id.startsWith('i:')) await removeItem(id.slice(2))
       return
     }
     const [, day, meal] = over.split('|') as [string, string, MealId]
@@ -260,7 +262,7 @@ function Semana() {
               {MEALS.map((m) => (
                 <Row key={m.id} label={m.name}>
                   {days.map((d) => (
-                    <Cell key={d} day={d} meal={m.id} items={slotOf(items, d, m.id)} onOpen={() => setSlot({ day: d, meal: m.id })} draggableItems />
+                    <Cell key={d} day={d} meal={m.id} items={slotOf(items, d, m.id)} onOpen={() => setSlot({ day: d, meal: m.id })} onRemove={(id) => void removeItem(id)} draggableItems />
                   ))}
                 </Row>
               ))}
@@ -287,7 +289,7 @@ function Semana() {
               {MEALS.map((m) => (
                 <div key={m.id}>
                   <div className="mb-1 text-xs font-semibold tracking-wider text-muted uppercase">{m.name}</div>
-                  <Cell day={days.includes(mDay) ? mDay : days[0]} meal={m.id} items={slotOf(items, days.includes(mDay) ? mDay : days[0], m.id)} onOpen={() => setSlot({ day: days.includes(mDay) ? mDay : days[0], meal: m.id })} />
+                  <Cell day={days.includes(mDay) ? mDay : days[0]} meal={m.id} items={slotOf(items, days.includes(mDay) ? mDay : days[0], m.id)} onOpen={() => setSlot({ day: days.includes(mDay) ? mDay : days[0], meal: m.id })} onRemove={(id) => void removeItem(id)} />
                 </div>
               ))}
             </div>
@@ -300,6 +302,7 @@ function Semana() {
         <Panel recipes={recipes} pantry={pantry} />
       </div>
 
+      {drag?.fromMenu && <FloatingTrash />}
       <DragOverlay>
         {drag && (
           <div className="flex items-center gap-2 rounded-xl border border-accent bg-surface px-3 py-2 text-sm font-semibold shadow-card">
@@ -335,7 +338,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function Cell({ day, meal, items, onOpen, draggableItems = false }: { day: string; meal: MealId; items: PlanItem[]; onOpen: () => void; draggableItems?: boolean }) {
+function Cell({ day, meal, items, onOpen, onRemove, draggableItems = false }: { day: string; meal: MealId; items: PlanItem[]; onOpen: () => void; onRemove: (id: string) => void; draggableItems?: boolean }) {
   const { L } = useData()
   // En móvil no se arrastra: su copia del hueco no debe registrarse con el mismo id que la de PC
   const { setNodeRef, isOver } = useDroppable({ id: `${draggableItems ? 'cell' : 'mcell'}|${day}|${meal}`, disabled: !draggableItems })
@@ -344,21 +347,116 @@ function Cell({ day, meal, items, onOpen, draggableItems = false }: { day: strin
       ref={setNodeRef}
       className={`flex min-h-16 flex-col gap-1 rounded-xl border p-1.5 ${isOver ? 'border-accent bg-accent-soft' : 'border-line bg-surface'}`}
     >
-      {items.map((it) => (draggableItems ? <DragItem key={it.id} it={it} onOpen={onOpen} /> : <ItemChip key={it.id} icon={planItemIcon(it, L)} name={planItemName(it, L)} onClick={onOpen} />))}
-      <button onClick={onOpen} className={`rounded-lg text-left text-xs font-semibold text-muted hover:text-accent ${items.length ? 'px-1.5 py-0.5' : 'flex-1 px-1.5 py-2'}`} aria-label={`Editar ${mealName(meal)} del ${dayLabel(day)}`}>
-        {items.length ? '+ / editar' : '+ Añadir'}
-      </button>
+      {items.map((it) => (draggableItems ? <DragItem key={it.id} it={it} onOpen={onOpen} onRemove={() => onRemove(it.id)} /> : <ItemChip key={it.id} icon={planItemIcon(it, L)} name={planItemName(it, L)} onClick={onOpen} onRemove={() => onRemove(it.id)} />))}
+      {items.length ? (
+        <button
+          onClick={onOpen}
+          className="-m-0.5 mt-auto self-end rounded-md p-1.5 text-muted opacity-70 hover:bg-surface-2 hover:text-accent hover:opacity-100"
+          aria-label={`Editar ${mealName(meal)} del ${dayLabel(day)}`}
+          title="Editar"
+        >
+          <Icon name="lapiz" size={14} />
+        </button>
+      ) : (
+        <button onClick={onOpen} className="flex-1 rounded-lg px-1.5 py-2 text-left text-xs font-semibold text-muted hover:text-accent" aria-label={`Editar ${mealName(meal)} del ${dayLabel(day)}`}>
+          + Añadir
+        </button>
+      )}
     </div>
   )
 }
 
-function ItemChip({ icon, name, onClick, handle }: { icon: string; name: string; onClick?: () => void; handle?: ReactNode }) {
+/** Plato dentro de un hueco. Tocar abre la comida; dejar pulsado (o clic derecho) abre un menú con Quitar. */
+function ItemChip({ icon, name, onClick, onRemove, handle }: { icon: string; name: string; onClick?: () => void; onRemove: () => void; handle?: ReactNode }) {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const timer = useRef<number | null>(null)
+  const start = useRef<{ x: number; y: number } | null>(null)
+  const fired = useRef(false)
+  const cancel = () => {
+    if (timer.current) window.clearTimeout(timer.current)
+    timer.current = null
+  }
   return (
     <div className="flex items-start gap-1 rounded-lg bg-surface-2 px-1 py-1 text-xs leading-tight font-medium">
       {handle ?? <span aria-hidden="true">{icon}</span>}
-      <button onClick={onClick} className="min-w-0 flex-1 text-left break-words hyphens-auto">
+      <button
+        onClick={(e) => {
+          if (fired.current) {
+            fired.current = false
+            e.preventDefault()
+            return
+          }
+          onClick?.()
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          cancel()
+          setMenu({ x: e.clientX, y: e.clientY })
+        }}
+        onPointerDown={(e) => {
+          if (e.pointerType === 'mouse') return
+          fired.current = false
+          start.current = { x: e.clientX, y: e.clientY }
+          const { clientX: x, clientY: y } = e
+          cancel()
+          timer.current = window.setTimeout(() => {
+            fired.current = true
+            setMenu({ x, y })
+          }, 500)
+        }}
+        onPointerMove={(e) => {
+          if (start.current && Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y) > 8) cancel()
+        }}
+        onPointerUp={cancel}
+        onPointerCancel={cancel}
+        className="min-w-0 flex-1 text-left break-words hyphens-auto select-none [-webkit-touch-callout:none]"
+      >
         {name}
       </button>
+      {menu && <ChipMenu at={menu} name={name} onClose={() => setMenu(null)} onEdit={onClick} onRemove={onRemove} />}
+    </div>
+  )
+}
+
+function ChipMenu({ at, name, onClose, onEdit, onRemove }: { at: { x: number; y: number }; name: string; onClose: () => void; onEdit?: () => void; onRemove: () => void }) {
+  // Que no se salga de la pantalla
+  const x = Math.min(at.x, window.innerWidth - 200)
+  const y = Math.min(at.y, window.innerHeight - 150)
+  const item = 'w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium hover:bg-surface-2'
+  // Al soltar el dedo de la pulsación larga llega un clic al fondo: no debe cerrar el menú recién abierto
+  const [openedAt] = useState(() => Date.now())
+  const closeFromBackdrop = () => {
+    if (Date.now() - openedAt > 400) onClose()
+  }
+  return (
+    <div className="fixed inset-0 z-50" onClick={closeFromBackdrop} onContextMenu={(e) => { e.preventDefault(); onClose() }}>
+      <div role="menu" aria-label={name} className="absolute w-48 rounded-xl border border-line bg-surface p-1 shadow-card" style={{ left: x, top: y }} onClick={(e) => e.stopPropagation()}>
+        <p className="truncate px-3 pt-1.5 pb-1 text-xs text-muted">{name}</p>
+        {onEdit && (
+          <button role="menuitem" className={item} onClick={() => { onClose(); onEdit() }}>
+            Editar comida
+          </button>
+        )}
+        <button role="menuitem" className={`${item} text-bad`} onClick={() => { onClose(); onRemove() }}>
+          Quitar del menú
+        </button>
+        <button role="menuitem" className={`${item} text-muted`} onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Papelera que aparece abajo mientras arrastras un plato del menú, esté el panel abierto o plegado. */
+function FloatingTrash() {
+  const { setNodeRef, isOver } = useDroppable({ id: 'trash-float' })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-2xl border-2 border-dashed px-8 py-4 text-sm font-semibold shadow-card ${isOver ? 'border-bad bg-bad-soft text-bad' : 'border-line bg-surface text-muted'}`}
+    >
+      🗑️ Suelta aquí para quitar del menú
     </div>
   )
 }
@@ -378,14 +476,14 @@ function Handle({ icon, label, listeners, attributes, big = false }: { icon: str
   )
 }
 
-function DragItem({ it, onOpen }: { it: PlanItem; onOpen: () => void }) {
+function DragItem({ it, onOpen, onRemove }: { it: PlanItem; onOpen: () => void; onRemove: () => void }) {
   const { L } = useData()
   const label = planItemName(it, L)
   const icon = planItemIcon(it, L)
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: `i:${it.id}`, data: { label, icon } })
   return (
     <div ref={setNodeRef} className={isDragging ? 'opacity-40' : ''}>
-      <ItemChip icon={icon} name={label} onClick={onOpen} handle={<Handle icon={icon} label={label} listeners={listeners} attributes={attributes} />} />
+      <ItemChip icon={icon} name={label} onClick={onOpen} onRemove={onRemove} handle={<Handle icon={icon} label={label} listeners={listeners} attributes={attributes} />} />
     </div>
   )
 }
@@ -411,7 +509,6 @@ function Panel({ recipes, pantry }: { recipes: ReturnType<typeof useData>['recip
       }
       return !o
     })
-  const { setNodeRef: trashRef, isOver: trashOver } = useDroppable({ id: 'trash', disabled: !open })
 
   if (!open)
     return (
@@ -460,10 +557,7 @@ function Panel({ recipes, pantry }: { recipes: ReturnType<typeof useData>['recip
           ))}
         {tab === 'o' && (Object.keys(EAT_OUT) as EatOut[]).map((o) => <PanelItem key={o} src={{ kind: 'o', id: o }} icon="🍽️" label={`Fuera · ${EAT_OUT[o].name.toLowerCase()}`} sub={`~${fmt(EAT_OUT[o].nut.kcal ?? 0)} kcal · ${EAT_OUT[o].desc}`} />)}
       </div>
-      <div ref={trashRef} className={`rounded-xl border-2 border-dashed p-3 text-center text-sm ${trashOver ? 'border-bad bg-bad-soft text-bad' : 'border-line text-muted'}`}>
-        Suelta aquí para quitar del menú
-      </div>
-      <p className="text-xs text-muted">Arrastra una receta desde su icono a un hueco para añadirla (puedes poner varias). Arrastra un plato del menú desde su icono a otro hueco para moverlo.</p>
+      <p className="text-xs text-muted">Arrastra una receta desde su icono a un hueco para añadirla (puedes poner varias). Arrastra un plato del menú desde su icono a otro hueco para moverlo, o abajo a la papelera para quitarlo. También puedes dejar pulsado el plato (o clic derecho) para quitarlo.</p>
     </aside>
   )
 }
