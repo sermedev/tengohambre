@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { db } from '../lib/db'
 import { norm } from '../lib/text'
+import { matchesName, searchByName } from '../lib/search'
 import { useData } from '../lib/data-context'
 import { fmt, highProtein, ingredientsServing, recipeServing, type BedcaFood } from '../lib/nutrition'
 import type { Food, MealId, Recipe, RecipeIngredient } from '../lib/types'
@@ -45,10 +46,10 @@ export function Recetas() {
 
   const list = (tab === 'mias' ? mine : pres)
     .map((r) => ({ r, n: recipeServing(r, L) }))
-    .filter(({ r, n }) => (!k || norm(r.name).includes(k)) && filt({ ...r, hp: highProtein(n) }))
+    .filter(({ r, n }) => matchesName(q, r.name) && filt({ ...r, hp: highProtein(n) }))
   const sugList = sugs
     .map((s) => ({ s, n: ingredientsServing(s.ing.map(([id, , g]) => ({ food_ref: `bedca:${id}`, grams: g })), 1, L) }))
-    .filter(({ s, n }) => (!k || norm(s.name).includes(k)) && filt({ groups: s.groups, minutes: s.minutes, kid_friendly: s.kids, meals: s.meals, hp: highProtein(n) }))
+    .filter(({ s, n }) => matchesName(q, s.name) && filt({ groups: s.groups, minutes: s.minutes, kid_friendly: s.kids, meals: s.meals, hp: highProtein(n) }))
   const openRecipe = open ? L.recipes.get(open) : undefined
 
   return (
@@ -405,24 +406,25 @@ function IconPicker({ value, onChange }: { value: string; onChange: (v: string) 
 function FoodSearch({ onPick }: { onPick: (f: BedcaFood | Food, ref: string) => void }) {
   const { bedca, foods } = useData()
   const [q, setQ] = useState('')
-  const res = useMemo(() => {
-    const k = norm(q.trim())
-    if (k.length < 2) return []
-    const words = k.split(/\s+/)
-    const match = (name: string) => words.every((w) => norm(name).includes(w))
-    const own = foods.filter((f) => match(f.name)).map((f) => ({ ref: `food:${f.id}`, f, label: f.name, sub: `Etiqueta${f.brand ? ` · ${f.brand}` : ''} · ${fmt(Number(f.kcal ?? 0))} kcal/100 g` }))
-    const bd = [...bedca.values()]
-      .filter((f) => match(f.name))
-      .sort((a, b) => (norm(a.name).startsWith(words[0]) ? 0 : 1) - (norm(b.name).startsWith(words[0]) ? 0 : 1) || a.name.length - b.name.length)
-      .map((f) => ({ ref: `bedca:${f.id}`, f, label: f.name, sub: `BEDCA · ${fmt(f.kcal ?? 0)} kcal/100 g` }))
-    return [...own, ...bd].slice(0, 12)
+  const { res, partial } = useMemo(() => {
+    if (q.trim().length < 2) return { res: [], partial: false }
+    // Alimentos propios (etiqueta) y BEDCA juntos, con la búsqueda tolerante
+    type Hit = { ref: string; f: BedcaFood | Food; label: string; sub: string }
+    const all: Hit[] = [
+      ...foods.map((f) => ({ ref: `food:${f.id}`, f, label: f.name, sub: `Etiqueta${f.brand ? ` · ${f.brand}` : ''} · ${fmt(Number(f.kcal ?? 0))} kcal/100 g` })),
+      ...[...bedca.values()].map((f) => ({ ref: `bedca:${f.id}`, f, label: f.name, sub: `BEDCA · ${fmt(f.kcal ?? 0)} kcal/100 g` })),
+    ]
+    const r = searchByName(all, q, (h) => h.label, 12)
+    return { res: r.items, partial: r.partial }
   }, [q, bedca, foods])
 
   return (
     <div>
       <input className={input} placeholder="Añadir ingrediente: busca en BEDCA (p. ej. «lenteja», «pollo pechuga»)" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar ingrediente" />
+      {q.trim().length >= 2 && !res.length && <p className="mt-1 text-sm text-muted">No hay ningún alimento con ese nombre.</p>}
       {res.length > 0 && (
         <div className="mt-1 max-h-72 overflow-y-auto rounded-xl border border-line bg-surface shadow-card">
+          {partial && <p className="px-3 py-2 text-xs text-muted">No está tal cual. Estos son los más parecidos:</p>}
           {res.map((x) => (
             <button
               key={x.ref}

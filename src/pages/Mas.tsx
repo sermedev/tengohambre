@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSession } from '../lib/session-context'
 import { applyTheme, getTheme, type ThemeChoice } from '../lib/theme'
 import { SOURCES } from '../data/sources'
+import { searchByName } from '../lib/search'
 import { Icon } from '../components/Icon'
 import { Card, PageTitle, Tabs, btnGhost, input } from '../components/ui'
 
 type BedcaFood = { id: number; name: string; group?: string; kcal?: number; protein_g?: number; carbs_g?: number; fat_g?: number; fiber_g?: number }
 
-const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 const n1 = (v?: number) => (v == null ? '–' : v.toLocaleString('es-ES', { maximumFractionDigits: 1 }))
 
 function Alimentos() {
@@ -22,11 +22,7 @@ function Alimentos() {
       .catch(() => setMissing(true))
   }, [])
 
-  const list = useMemo(() => {
-    if (!foods) return []
-    const k = norm(q.trim())
-    return (k ? foods.filter((f) => norm(f.name).includes(k)) : foods).slice(0, 60)
-  }, [foods, q])
+  const { items: list, partial } = useMemo(() => (foods ? searchByName(foods, q, (f) => f.name, 60) : { items: [], partial: false }), [foods, q])
 
   if (missing)
     return (
@@ -38,6 +34,8 @@ function Alimentos() {
   return (
     <Card>
       <input className={`${input} mb-3`} placeholder="Buscar alimento…" value={q} onChange={(e) => setQ(e.target.value)} />
+      {q.trim() && !list.length && <p className="mb-2 text-sm">No hay ningún alimento con ese nombre en BEDCA.</p>}
+      {partial && <p className="mb-2 text-sm">No está «{q.trim()}» tal cual en BEDCA. Estos son los más parecidos:</p>}
       <p className="mb-2 text-sm text-muted">Valores por 100 g de parte comestible · Fuente: BEDCA (AESAN)</p>
       <div className="overflow-x-auto">
         <table className="num w-full text-sm">
