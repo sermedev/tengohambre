@@ -4,7 +4,7 @@ import { db } from '../lib/db'
 import { useData, usePlan } from '../lib/data-context'
 import { DSHORT, MONTHS, addDays, dayLabel, mondayOf, parseIso, todayIso } from '../lib/dates'
 import { EAT_OUT, PORTION_STEPS, factorOf, fmt, fmtPortion, planItemIcon, planItemName, planItemServing, recipeServing } from '../lib/nutrition'
-import { addToSlot, eatsInSlot, moveItem, parseSource, personDay, setPortion, sourceKey, toggleEater, type Source } from '../lib/plan'
+import { addToSlot, eatsInSlot, moveItem, parseSource, personDay, setPortion, sourceKey, toggleEater, undoApply, type Source, type Undo } from '../lib/plan'
 import { targetOf } from '../lib/targets'
 import type { EatOut, MealId, Member, PlanItem } from '../lib/types'
 import { GROUPS, MEALS, mealName } from '../data/meals'
@@ -14,6 +14,7 @@ import { MacroLine } from '../components/NutTable'
 import { Bar, Card, Empty, Modal, PageTitle, Tabs, btnGhost, btnPrimary, btnSm, input } from '../components/ui'
 import { norm } from '../lib/text'
 import { ageInfo, pantryIcon, qtyText } from '../lib/pantry'
+import { MenuTemplates } from './MenuTemplates'
 
 const PANEL_KEY = 'tengohambre-panel-recetas'
 
@@ -151,7 +152,12 @@ function Semana() {
     return days.includes(t) ? t : monday
   })
   const [drag, setDrag] = useState<{ label: string; icon: string } | null>(null)
-  const [copyMsg, setCopyMsg] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ text: string; undo?: Undo } | null>(null)
+  const [templates, setTemplates] = useState(false)
+  const goWeek = (m: string) => {
+    setMonday(m)
+    setNotice(null)
+  }
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 8 } }))
   const today = todayIso()
   const a = parseIso(days[0])
@@ -186,12 +192,12 @@ function Semana() {
 
   async function copyPrev() {
     const prev = await db.list<PlanItem>('meal_plan_items', { col: 'day', from: addDays(monday, -7), to: addDays(monday, -1) })
-    if (!prev.length) return setCopyMsg('La semana anterior está vacía.')
-    await db.insert<PlanItem>(
+    if (!prev.length) return setNotice({ text: 'La semana anterior está vacía.' })
+    const added = await db.insert<PlanItem>(
       'meal_plan_items',
       prev.map((p) => ({ day: addDays(p.day, 7), meal: p.meal, position: p.position + 100, recipe_id: p.recipe_id, pantry_item_id: null, eat_out: p.eat_out, label: p.recipe_id || p.eat_out ? null : p.label, portions: p.portions })).filter((p) => p.recipe_id || p.eat_out || p.label),
     )
-    setCopyMsg(`Copiados ${prev.length} platos de la semana anterior.`)
+    setNotice({ text: `Copiados ${added.length} platos de la semana anterior.`, undo: { added: added.map((x) => x.id), removed: [] } })
     await reload()
   }
 
@@ -205,21 +211,41 @@ function Semana() {
               {a.getMonth() !== b.getMonth() ? ` de ${MONTHS[a.getMonth()]}` : ''} al {b.getDate()} de {MONTHS[b.getMonth()]}
             </PageTitle>
             <div className="mb-4 flex flex-wrap gap-2">
-              <button className={btnGhost} aria-label="Semana anterior" onClick={() => setMonday(addDays(monday, -7))}>
+              <button className={btnGhost} aria-label="Semana anterior" onClick={() => goWeek(addDays(monday, -7))}>
                 ‹
               </button>
-              <button className={btnGhost} onClick={() => setMonday(mondayOf(today))}>
+              <button className={btnGhost} onClick={() => goWeek(mondayOf(today))}>
                 Esta semana
               </button>
-              <button className={btnGhost} aria-label="Semana siguiente" onClick={() => setMonday(addDays(monday, 7))}>
+              <button className={btnGhost} aria-label="Semana siguiente" onClick={() => goWeek(addDays(monday, 7))}>
                 ›
               </button>
               <button className={btnGhost} onClick={() => void copyPrev()}>
                 Copiar semana anterior
               </button>
+              <button className={btnGhost} onClick={() => setTemplates(true)}>
+                Menús tipo
+              </button>
             </div>
           </div>
-          {copyMsg && <p className="-mt-2 mb-3 text-sm text-muted">{copyMsg}</p>}
+          {notice && (
+            <p className="-mt-2 mb-3 text-sm text-muted">
+              {notice.text}
+              {notice.undo && (
+                <button
+                  className="ml-2 font-semibold text-accent"
+                  onClick={async () => {
+                    const u = notice.undo!
+                    setNotice(null)
+                    await undoApply(u)
+                    await reload()
+                  }}
+                >
+                  Deshacer
+                </button>
+              )}
+            </p>
+          )}
 
           {/* PC y tablet horizontal: cuadrícula de la semana */}
           <div className="hidden overflow-x-auto lg:block">
@@ -282,6 +308,19 @@ function Semana() {
         )}
       </DragOverlay>
       {slot && <SlotEditor day={slot.day} meal={slot.meal} items={slotOf(items, slot.day, slot.meal)} onClose={() => setSlot(null)} onChange={reload} />}
+      {templates && (
+        <MenuTemplates
+          monday={monday}
+          weekLabel={`Semana del ${a.getDate()}${a.getMonth() !== b.getMonth() ? ` de ${MONTHS[a.getMonth()]}` : ''} al ${b.getDate()} de ${MONTHS[b.getMonth()]}`}
+          items={items}
+          onClose={() => setTemplates(false)}
+          onApplied={async (text, undo) => {
+            setTemplates(false)
+            setNotice({ text, undo })
+            await reload()
+          }}
+        />
+      )}
     </DndContext>
   )
 }
