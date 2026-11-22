@@ -68,3 +68,12 @@ export async function setPortion(it: PlanItem, m: Member, f: number) {
   else portions[m.id] = f
   await db.update('meal_plan_items', it.id, { portions })
 }
+
+/** Lo que se puede deshacer justo después de copiar una semana o aplicar un menú tipo. */
+export type Undo = { added: string[]; removed: PlanItem[] }
+
+export async function undoApply(u: Undo) {
+  if (u.added.length) await db.remove('meal_plan_items', u.added)
+  // Los platos quitados vuelven tal cual; sin el enlace al almacén por si esas sobras ya no están (el nombre se conserva)
+  if (u.removed.length) await db.insert<PlanItem>('meal_plan_items', u.removed.map((r) => ({ ...r, pantry_item_id: null })))
+}

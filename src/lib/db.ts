@@ -16,6 +16,7 @@ export type Table =
   | 'meal_plan_items'
   | 'shopping_items'
   | 'saved_products'
+  | 'menu_templates'
 
 type Row = { id: string } & Record<string, unknown>
 type Range = { col: string; from: string; to: string }
@@ -158,6 +159,7 @@ function defaults(table: Table): Record<string, unknown> {
   if (table === 'pantry_items') return { added_on: today, recipe_id: null, expires_on: null, unit: 'ud', qty: 1 }
   if (table === 'meal_plan_items') return { position: 0, recipe_id: null, pantry_item_id: null, eat_out: null, label: null, portions: {} }
   if (table === 'shopping_items') return { section: 'Otros', qty: null, unit: null, checked: false, from_menu: false, note: null, updated_at: new Date().toISOString() }
+  if (table === 'menu_templates') return { items: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
   if (table === 'members') return { color: '--p1', icon: null, is_kid: false, default_portion: 1, goal: 'mantener', activity: 'baja', height_cm: null, waist_cm: null, sports: [], position: 0 }
   return {}
 }
